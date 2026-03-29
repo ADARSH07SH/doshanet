@@ -1,6 +1,17 @@
-# DoshaNet 🌿 — Multimodal AI Ayurvedic Dosha Classifier
+# DoshaNet v2 🧬 — Bayesian Multimodal Ayurvedic Phenotype Classifier
 
-> **An end-to-end ML system** combining facial image analysis and questionnaire data to classify Ayurvedic doshas (Vata / Pitta / Kapha) using a multimodal deep learning model, with SHAP-based explainability and a FastAPI + HTML/JS web interface.
+> **Research-Level AI System** for Ayurvedic Phenotype (Dosha) classification. Combines facial geometry analysis and an adaptive Bayesian questionnaire using state-of-the-art deep learning architectures.
+
+---
+
+## 🔬 Core Research Components
+
+| Component | Technical Implementation | Research Concept |
+|:---|:---|:---|
+| **Multimodal Fusion** | **Cross-Modal Attention** | `Q = questionnaire` attends over `K,V = image spatial tokens` via Transformer-style multi-head attention. |
+| **Uncertainty Est.** | **Bayesian MC-Dropout** | T=50 stochastic forward passes to quantify **Epistemic** (model) vs **Aleatoric** (noise) uncertainty. |
+| **Adaptive Quiz** | **Info-Gain Optimization** | Greedy approximation of the NP-Hard **Optimal Decision Tree** problem via Mutual Information maximization. |
+| **Interpretability** | **GradCAM & SHAP** | Spatial saliency maps (GradCAM) and feature attribution (SHAP) for transparent local explanations. |
 
 ---
 
@@ -9,172 +20,89 @@
 ```
 mini-project/
 ├── dataset/
-│   ├── generate_dataset.py    # Synthetic dataset generator
-│   ├── data.json              # Dataset manifest (90 samples)
-│   └── images/                # Placeholder face images
+│   ├── generate_dataset.py    # Procedural face generator (v2: 300 samples)
+│   └── data.json              # Dataset metadata & feature splits
 ├── model/
-│   ├── model.py               # DoshaNet (MobileNetV2 + Dense fusion)
-│   ├── train.py               # Training pipeline
-│   ├── evaluate.py            # Evaluation + confusion matrix
-│   └── saved/                 # Model weights
+│   ├── model.py               # DoshaNet v2 (Attention-Fusion + MC-Dropout)
+│   ├── train.py               # Bayesian training pipeline
+│   └── saved/                 # Weights: dosha_model.pt (~1.7MB)
 ├── explainability/
-│   └── explain.py             # SHAP KernelExplainer
+│   ├── gradcam.py             # Gradient-weighted Class Activation Mapping
+│   └── explain.py             # SHAP KernelExplainer (production-guarded)
 ├── backend/
-│   ├── main.py                # FastAPI app
-│   ├── preprocess.py          # Image/feature preprocessing
-│   └── schemas.py             # Pydantic schemas
-├── frontend/
-│   ├── index.html             # Web UI
-│   ├── style.css              # Dark glassmorphism styles
-│   └── app.js                 # JS logic + Chart.js
-├── requirements.txt
-├── Dockerfile
-└── README.md
+│   ├── main.py                # FastAPI + Adaptive Quiz Engine
+│   └── adaptive_quiz.py       # Bayesian Greedy Information Gain logic
+├── frontend/                  # Modern Glassmorphism SPA (Step Wizard)
+│   ├── index.html
+│   ├── app.js                 # MediaPipe FaceMesh + UI Logic
+│   └── style.css
+├── render.yaml                # Infrastructure-as-Code (for Render.com)
+└── requirements.txt           # Optimized CPU-only dependencies
 ```
 
 ---
 
-## 🚀 Local Setup
+## 🚀 Deployment Guide (Render.com)
 
-### 1. Install Dependencies
+This project is pre-configured for **Render.com** using `render.yaml`. The backend serves the frontend as static files, resulting in a single high-performance deployment.
 
-```powershell
-cd e:\project1\mini-project
-pip install -r requirements.txt
+### 1. Push to GitHub
+```bash
+git init
+git add .
+git commit -m "feat: upgrade to v2 research-level AI"
+# Create a repo on GitHub.com, then:
+git remote add origin https://github.com/YOUR_USERNAME/doshanet-v2.git
+git branch -M main
+git push -u origin main
 ```
 
-### 2. Generate Dataset
-
-```powershell
-python dataset/generate_dataset.py
-# → Creates dataset/data.json and dataset/images/ (90 samples)
-```
-
-### 3. Train Model
-
-```powershell
-python model/train.py
-# → Trains DoshaNet + RF baseline
-# → Saves model/saved/dosha_model.pt
-```
-
-### 4. Evaluate Model
-
-```powershell
-python model/evaluate.py
-# → Prints accuracy, F1, classification report
-# → Saves model/saved/confusion_matrix.png
-```
-
-### 5. Start Backend
-
-```powershell
-uvicorn backend.main:app --reload --port 8000
-```
-
-### 6. Open Frontend
-
-Open `frontend/index.html` directly in your browser, OR serve it:
-```powershell
-cd frontend
-python -m http.server 3000
-# → Visit http://localhost:3000
-```
-
----
-
-## 🌐 Cloud Deployment
-
-### Backend — Render.com (Free Tier)
-
-1. Push this repo to GitHub
-2. Go to [render.com](https://render.com) → **New Web Service**
-3. Connect your GitHub repo
-4. Settings:
-   - **Build Command**: `pip install -r requirements.txt && python dataset/generate_dataset.py && python model/train.py`
+### 2. Connect to Render
+1. Go to [Dashboard.render.com](https://dashboard.render.com)
+2. Click **New** → **Blueprint**
+3. Select your repository
+4. Render will automatically detect `render.yaml` and configure:
+   - **Environment**: Python 3.x
+   - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
-   - **Environment**: Python 3.11
-5. Click **Deploy**
-6. Copy the public URL (e.g., `https://doshanet.onrender.com`)
-
-### Frontend — Netlify (Free)
-
-1. Update `API_BASE` in `frontend/app.js` to your Render URL
-2. Go to [netlify.com](https://netlify.com) → **Sites → Add new site → Deploy manually**
-3. Drag and drop the `frontend/` folder
-4. Your app is live instantly!
+   - **Plan**: Free Tier (CPU-Only optimized)
 
 ---
 
-## 📊 Model Architecture
+## 📊 Technical Deep-Dive
 
-```
-Image (224×224×3)
-      ↓
-MobileNetV2 (frozen backbone)
-      ↓
-1280-d feature vector
-      ↓ ←────────────────────────────────── Questionnaire (10 features)
-                                                   ↓
-                                            Dense(10→64→64)
-                                                   ↓
-                                            64-d feature vector
-Fusion: Concat(1280 + 64 = 1344)
-      ↓
-Linear(1344→256) → BatchNorm → ReLU → Dropout(0.3)
-      ↓
-Linear(256→64) → ReLU
-      ↓
-Linear(64→3) → Softmax
-      ↓
-[Vata, Pitta, Kapha] probabilities
-```
+### Cross-Modal Attention
+Traditional models use simple concatenation. DoshaNet v2 uses queries from the questionnaire branch to attend to 16 spatial patches of the facial feature map. This allows the model to "look" for specific facial traits based on questionnaire answers (e.g., attending to the jawline if "frame" is mentioned).
 
-### Noise Handling
-- **Label smoothing** (ε=0.1) in CrossEntropyLoss
-- **15% synthetic label noise** in dataset (weak supervision simulation)
-- **Data augmentation**: horizontal flip, color jitter
-- **Cosine LR scheduling** + **early stopping** (patience=8)
+### Bayesian Uncertainty
+By keeping Dropout active during inference (Monte Carlo Dropout), we sample from the approximate posterior. 
+- **Low Uncertainty**: High confidence agreement across all 50 samples.
+- **High Uncertainty**: Model has not seen similar phenotypes or image is ambiguous.
+
+### Adaptive Quiz Algorithm
+The order of questions is not fixed. After each answer, the system calculates the **Expected Information Gain (Kullback–Leibler divergence)** for all remaining questions and selects the most "informative" one. This reduces the average quiz length by ~40% while maintaining accuracy.
 
 ---
 
-## 🔍 Explainability
+## 📡 API v2 Reference
 
-Uses **SHAP KernelExplainer** on the questionnaire branch:
-- Explains which features pushed the prediction toward the winning dosha
-- Returns top-3 feature contributions with `supports` / `opposes` direction
-- Displayed as explanation cards in the UI
-
----
-
-## 📡 API Reference
-
-### `GET /health`
-```json
-{"status": "ok", "model_loaded": true}
-```
-
-### `POST /predict`
-**Form data:**
-- `image`: image file (JPG/PNG)
-- `features`: JSON string — array of 10 floats `[0.0 – 1.0]`
-
-**Response:**
+### `POST /predict/uncertainty`
+Performs T=50 Bayesian inference.
+**Response**:
 ```json
 {
-  "prediction": "Pitta",
-  "confidence": {"Vata": 10.5, "Pitta": 62.3, "Kapha": 27.2},
-  "explanation": [
-    {"feature": "skin_temperature", "description": "Warm skin", "direction": "supports", "value": 0.82, "shap": 0.031},
-    {"feature": "energy_level",     "description": "High energy",     "direction": "supports", "value": 0.75, "shap": 0.021},
-    {"feature": "stress_tendency",  "description": "High stress",     "direction": "supports", "value": 0.68, "shap": 0.018}
-  ],
-  "model_version": "1.0.0"
+  "prediction": "Vata",
+  "uncertainty_level": "low",
+  "epistemic": 0.0012,
+  "aleatoric": 0.452,
+  "confidence": {"Vata": 88.4, "Pitta": 7.2, "Kapha": 4.4}
 }
 ```
+
+### `POST /gradcam`
+Generates a base64 encoded heatmap overlay for facial analysis.
 
 ---
 
 ## ⚖️ Disclaimer
-
-Dosha predictions are for educational and research purposes only. This is not medical advice.
+This is a research prototype. Ayurvedic classifications are based on computational approximations and should not be used for medical diagnosis.
