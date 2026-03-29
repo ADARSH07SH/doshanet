@@ -1,0 +1,37 @@
+# ═══════════════════════════════════════════════════════════════
+# render.yaml — DoshaNet v2 Render Deployment Config
+#
+# Single service: FastAPI backend also serves the frontend
+# as static files via /app/* mount (no separate frontend service needed)
+#
+# Docs: https://render.com/docs/render-yaml-spec
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  - type: web
+    name: doshanet-v2
+    runtime: python
+    region: oregon           # or frankfurt for EU users
+    plan: free               # upgrade to starter ($7/mo) for 2GB RAM
+
+    # ── Build step (runs once on deploy) ─────────────────────────
+    buildCommand: pip install -r requirements.txt
+
+    # ── Start command ─────────────────────────────────────────────
+    # Render injects $PORT automatically
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT --workers 1
+
+    # ── Environment variables ─────────────────────────────────────
+    envVars:
+      - key: KMP_DUPLICATE_LIB_OK
+        value: "TRUE"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      # Set this to "production" to disable SHAP on free tier (saves ~150MB RAM)
+      - key: DOSHANET_ENV
+        value: "production"
+
+    # ── Health check ──────────────────────────────────────────────
+    healthCheckPath: /health

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DoshaNet v2 — Bayesian Ayurvedic Phenotype Classifier</title>
+  <meta name="description" content="Research-grade multimodal AI combining facial geometry analysis and adaptive Bayesian questionnaire to classify Vata, Pitta, Kapha Ayurvedic phenotypes with uncertainty quantification."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"/>
+  <link rel="stylesheet" href="style.css?v=2.0"/>
+
+  <!-- MediaPipe Face Mesh -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js" crossorigin="anonymous"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────── -->
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <span class="logo-icon">🧬</span>
+      <span class="logo-text">DoshaNet <em>v2</em></span>
+      <span class="badge">Research</span>
+    </div>
+    <nav class="header-nav">
+      <a href="#analyzer">Analyzer</a>
+      <a href="#about">Algorithm</a>
+      <div class="status-wrap" title="Backend status">
+        <span id="api-status" class="status-dot"></span>
+        <span id="api-label" class="status-label">checking…</span>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<!-- ── Hero ────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">MULTIMODAL BAYESIAN AI</div>
+    <h1>Discover Your<br/><span class="gradient-text">Ayurvedic Phenotype</span></h1>
+    <p class="hero-sub">
+      Cross-modal attention fusion · MC-Dropout uncertainty · Adaptive Bayesian questionnaire
+    </p>
+    <div class="hero-pills">
+      <span class="pill vata">🌬️ Vata</span>
+      <span class="pill pitta">🔥 Pitta</span>
+      <span class="pill kapha">🌊 Kapha</span>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><span>Cross-Modal</span><small>Attention Fusion</small></div>
+      <div class="stat"><span>MC-Dropout</span><small>Uncertainty Est.</small></div>
+      <div class="stat"><span>Adaptive</span><small>Bayesian Quiz</small></div>
+      <div class="stat"><span>GradCAM</span><small>Saliency Maps</small></div>
+    </div>
+  </div>
+  <div class="hero-visual">
+    <canvas id="dosha-orb-canvas" width="340" height="340"></canvas>
+  </div>
+</section>
+
+<!-- ── Main Analyzer ───────────────────────────────────────── -->
+<section class="analyzer" id="analyzer">
+  <div class="analyzer-inner">
+
+    <!-- Step indicators -->
+    <div class="steps-bar">
+      <div class="step active" id="step-ind-1"><span class="step-num">1</span><span>Face Analysis</span></div>
+      <div class="step-line"></div>
+      <div class="step" id="step-ind-2"><span class="step-num">2</span><span>Adaptive Quiz</span></div>
+      <div class="step-line"></div>
+      <div class="step" id="step-ind-3"><span class="step-num">3</span><span>Results</span></div>
+    </div>
+
+    <!-- ── Step 1: Face capture ─────────────────────────────────── -->
+    <div class="panel" id="panel-face">
+      <div class="panel-header">
+        <h2>Face Analysis</h2>
+        <p>MediaPipe FaceMesh extracts facial geometry — auto-fills face shape feature</p>
+      </div>
+      <div class="face-layout">
+        <!-- Upload / Webcam -->
+        <div class="face-input-col">
+          <div class="mode-tabs">
+            <button class="mode-tab active" id="tab-upload" onclick="switchMode('upload')">📁 Upload Photo</button>
+            <button class="mode-tab" id="tab-webcam" onclick="switchMode('webcam')">📷 Webcam</button>
+          </div>
+
+          <!-- Upload mode -->
+          <div id="upload-mode">
+            <div class="drop-zone" id="drop-zone" tabindex="0" role="button" aria-label="Upload face photo">
+              <img id="preview-img" class="hidden" alt="Preview"/>
+              <div id="drop-content">
+                <div class="drop-icon">🖼️</div>
+                <div class="drop-title">Drop photo or click</div>
+                <div class="drop-sub">JPEG / PNG / WEBP</div>
+              </div>
+            </div>
+            <input type="file" id="image-input" accept="image/*" class="hidden"/>
+          </div>
+
+          <!-- Webcam mode -->
+          <div id="webcam-mode" class="hidden">
+            <div class="webcam-container">
+              <video id="webcam-video" playsinline autoplay muted></video>
+              <canvas id="webcam-canvas" class="webcam-overlay"></canvas>
+              <div id="webcam-status" class="webcam-status">Initializing camera…</div>
+            </div>
+            <button class="btn-capture" id="capture-btn" onclick="captureWebcam()" disabled>
+              📸 Capture Frame
+            </button>
+          </div>
+        </div>
+
+        <!-- Face metrics panel -->
+        <div class="face-metrics-col">
+          <div class="metrics-card">
+            <div class="metrics-title">🔍 Auto-Extracted Metrics</div>
+            <div class="metric-row">
+              <span class="metric-name">Face Width Ratio</span>
+              <div class="metric-bar-wrap">
+                <div class="metric-bar" id="bar-ratio" style="width:50%"></div>
+              </div>
+              <span class="metric-val" id="val-ratio">—</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Symmetry Score</span>
+              <div class="metric-bar-wrap">
+                <div class="metric-bar sym" id="bar-sym" style="width:50%"></div>
+              </div>
+              <span class="metric-val" id="val-sym">—</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-name">Skin Tone</span>
+              <div id="skin-swatch" class="skin-swatch"></div>
+              <span class="metric-val" id="val-skin">—</span>
+            </div>
+            <div class="metrics-note" id="metrics-note">
+              Upload a face photo to auto-extract metrics via MediaPipe FaceMesh.
+            </div>
+          </div>
+
+          <div class="face-action">
+            <button class="btn-primary" id="start-quiz-btn" disabled onclick="startQuiz()">
+              <span id="start-btn-text">➡ Start Adaptive Quiz</span>
+              <div class="btn-spinner hidden" id="start-spinner"></div>
+            </button>
+            <p class="face-skip" onclick="skipFaceAnalysis()">Skip face analysis → manual quiz</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Step 2: Adaptive Quiz ────────────────────────────────── -->
+    <div class="panel hidden" id="panel-quiz">
+      <div class="panel-header">
+        <h2>Adaptive Questionnaire</h2>
+        <p id="quiz-algo-note">Greedy mutual information maximization — approximates NP-hard optimal decision tree</p>
+      </div>
+
+      <div class="quiz-layout">
+        <div class="quiz-question-col">
+          <div class="quiz-progress-wrap">
+            <div class="quiz-progress-bar-bg">
+              <div class="quiz-progress-bar" id="quiz-progress-bar" style="width:0%"></div>
+            </div>
+            <span id="quiz-progress-label">Question 1 of ≤7</span>
+          </div>
+
+          <div class="question-card" id="question-card">
+            <div class="question-label" id="question-label">Loading…</div>
+            <div class="question-scale">
+              <span class="scale-low" id="scale-low"></span>
+              <span class="scale-high" id="scale-high"></span>
+            </div>
+            <div class="slider-wrap">
+              <input type="range" id="quiz-slider" class="quiz-slider" min="0" max="100" value="50"/>
+            </div>
+            <div class="slider-value-display" id="slider-val-display">
+              <span id="slider-label-live"></span>
+              <span class="slider-num" id="slider-num-live">0.50</span>
+            </div>
+            <button class="btn-primary quiz-next-btn" id="quiz-next-btn" onclick="submitAnswer()">
+              Next Question →
+            </button>
+          </div>
+
+          <div class="quiz-info-note">
+            💡 <strong>Greedy Info-Gain:</strong> Each question is selected to maximally reduce uncertainty about your dosha — like a Bayesian 20-questions game.
+          </div>
+        </div>
+
+        <!-- Live posterior -->
+        <div class="quiz-posterior-col">
+          <div class="posterior-title">Live Posterior P(Dosha | answers)</div>
+          <div class="posterior-bars">
+            <div class="post-row vata-row">
+              <span class="post-label">Vata</span>
+              <div class="post-bar-bg"><div class="post-bar vata-bar" id="post-bar-vata" style="width:33%"></div></div>
+              <span class="post-pct" id="post-pct-vata">33%</span>
+            </div>
+            <div class="post-row pitta-row">
+              <span class="post-label">Pitta</span>
+              <div class="post-bar-bg"><div class="post-bar pitta-bar" id="post-bar-pitta" style="width:33%"></div></div>
+              <span class="post-pct" id="post-pct-pitta">33%</span>
+            </div>
+            <div class="post-row kapha-row">
+              <span class="post-label">Kapha</span>
+              <div class="post-bar-bg"><div class="post-bar kapha-bar" id="post-bar-kapha" style="width:33%"></div></div>
+              <span class="post-pct" id="post-pct-kapha">33%</span>
+            </div>
+          </div>
+          <div class="entropy-display">
+            <span class="entropy-label">Posterior Entropy</span>
+            <span class="entropy-val" id="entropy-val">1.585 bits</span>
+            <div class="entropy-bar-bg">
+              <div class="entropy-bar" id="entropy-bar" style="width:100%"></div>
+            </div>
+            <span class="entropy-note">Lower = more confident</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Step 3: Results ──────────────────────────────────────── -->
+    <div class="panel hidden" id="panel-results">
+      <div class="panel-header results-header">
+        <div>
+          <h2>Phenotype Analysis</h2>
+          <p>Cross-attention prediction with Bayesian uncertainty quantification</p>
+        </div>
+        <button class="btn-outline" onclick="resetAll()">↺ New Analysis</button>
+      </div>
+
+      <div class="results-grid">
+
+        <!-- Dosha prediction -->
+        <div class="result-card prediction-card" id="pred-card">
+          <div class="pred-emoji" id="pred-emoji">🌬️</div>
+          <div class="pred-name" id="pred-name">Vata</div>
+          <div class="pred-desc" id="pred-desc"></div>
+          <div class="uncertainty-badge" id="unc-badge">
+            <span>Uncertainty:</span>
+            <span id="unc-level" class="unc-level">—</span>
+          </div>
+        </div>
+
+        <!-- Ternary triangle -->
+        <div class="result-card ternary-card">
+          <div class="card-title">Dosha Space</div>
+          <canvas id="ternary-canvas" width="260" height="240"></canvas>
+          <div class="ternary-legend">
+            <span class="tl vata">V Vata</span>
+            <span class="tl pitta">P Pitta</span>
+            <span class="tl kapha">K Kapha</span>
+          </div>
+        </div>
+
+        <!-- Confidence chart -->
+        <div class="result-card chart-card">
+          <div class="card-title">Confidence Distribution</div>
+          <canvas id="confidence-chart" height="160"></canvas>
+          <div class="uncertainty-panel" id="unc-panel">
+            <div class="unc-row">
+              <span>Epistemic σ²</span>
+              <div class="unc-bar-bg"><div class="unc-bar epistemic" id="unc-epistemic-bar" style="width:0%"></div></div>
+              <span class="unc-num" id="unc-epistemic-val">—</span>
+            </div>
+            <div class="unc-row">
+              <span>Aleatoric H</span>
+              <div class="unc-bar-bg"><div class="unc-bar aleatoric" id="unc-aleatoric-bar" style="width:0%"></div></div>
+              <span class="unc-num" id="unc-aleatoric-val">—</span>
+            </div>
+            <div class="unc-note" id="mc-note">MC-Dropout (T=50) not run yet</div>
+          </div>
+        </div>
+
+        <!-- GradCAM -->
+        <div class="result-card gradcam-card" id="gradcam-card">
+          <div class="card-title">GradCAM Saliency</div>
+          <div class="gradcam-wrap">
+            <img id="gradcam-img" class="gradcam-img hidden" alt="GradCAM heatmap"/>
+            <div id="gradcam-placeholder" class="gradcam-placeholder">
+              <div>🔬</div>
+              <div>Computing gradient saliency…</div>
+            </div>
+          </div>
+          <div class="gradcam-note">Grad-weighted Class Activation Map — spatial regions driving prediction</div>
+        </div>
+
+        <!-- Explanation / SHAP -->
+        <div class="result-card explain-card full-width-card">
+          <div class="card-title">Feature Attribution (SHAP)</div>
+          <div id="explanation-cards" class="explain-list"></div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── Algorithm Panel ──────────────────────────────────────── -->
+<section class="about-section" id="about">
+  <div class="about-inner">
+    <h2 class="about-title">Algorithm Deep-Dive</h2>
+    <div class="algo-grid">
+      <div class="algo-card">
+        <div class="algo-icon">🧠</div>
+        <h3>Cross-Modal Attention</h3>
+        <p>Query features attend over image spatial tokens (16 patches): <code>Attn(Q=query, K=V=img_tokens)</code>. Enables genuine modality interaction vs naive concatenation. Inspired by CLIP & Flamingo.</p>
+      </div>
+      <div class="algo-card">
+        <div class="algo-icon">📊</div>
+        <h3>MC-Dropout Uncertainty</h3>
+        <p>T=50 stochastic forward passes with dropout ON ≈ sampling from approximate Bayesian posterior (Gal & Ghahramani, 2016). Separates <em>epistemic</em> (model) from <em>aleatoric</em> (data) uncertainty.</p>
+      </div>
+      <div class="algo-card">
+        <div class="algo-icon">🎯</div>
+        <h3>Adaptive Quiz (NP-Hard)</h3>
+        <p>Optimal question ordering = NP-complete Optimal Decision Tree (Hyafil & Rivest, 1976). Our greedy <strong>mutual information maximization</strong> achieves (1−1/e) ≈ 63% approximation. Stops when P(dosha) &gt; 82%.</p>
+      </div>
+      <div class="algo-card">
+        <div class="algo-icon">🔥</div>
+        <h3>GradCAM Saliency</h3>
+        <p>α<sub>k</sub> = GlobalAvgPool(∂y<sup>c</sup>/∂A<sup>k</sup>). Maps gradient × activation to spatial heatmap on the face image, showing which regions drove the dosha classification (Selvaraju et al., 2017).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <p>DoshaNet v2 · Cross-Modal Bayesian AI · Built with FastAPI + PyTorch</p>
+</footer>
+
+<div id="toast-container"></div>
+
+<script src="app.js?v=2.0"></script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+# ── Python cache ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# ── Virtual environments ──────────────────────────────────────
+.venv/
+venv/
+env/
+.env
+
+# ── Training artifacts (NOT needed for serving) ───────────────
+# Dataset images are regenerated locally; do NOT commit ~300 JPEGs
+dataset/images/
+
+# ── Jupyter ──────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+
+# ── IDE ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+
+# ─────────────────────────────────────────────────────────────
+# Files we WANT to commit (override the above if needed):
+#   model/saved/dosha_model.pt   ← trained model (~1.7 MB)
+#   model/saved/rf_baseline.pkl  ← RF baseline
+#   dataset/data.json            ← feature metadata (no images)
+#   frontend/*                   ← served as static files
+# ─────────────────────────────────────────────────────────────
