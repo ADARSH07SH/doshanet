@@ -287,6 +287,64 @@ def quiz_questions():
     return QUIZ_QUESTIONS
 
 
+@app.post("/quiz/next", response_model=QuizNextResponse)
+def quiz_next(req: QuizNextRequest):
+    if not _quiz:
+        raise HTTPException(503, "Quiz engine not available")
+    
+    try:
+        answered   = {int(k): float(v) for k, v in req.state.answered.items()}
+        posterior  = list(req.state.posterior)
+        q_idx      = int(req.question_idx)
+        answer     = float(req.answer)
+
+        # Update state with this answer
+        answered[q_idx] = answer
+        posterior       = _quiz.bayes_update(posterior, q_idx, answer)
+        n_answered      = len(answered)
+        entropy         = _quiz.entropy(posterior)
+
+        new_state = QuizState(
+            answered=answered,
+            posterior=posterior,
+            n_answered=n_answered,
+            entropy=round(entropy, 4),
+        )
+
+        # Check stopping condition (Confidence > 82% or Max Questions reached)
+        if _quiz.should_stop(posterior, n_answered):
+            pred, conf = _quiz.get_prediction(posterior)
+            # Fill unknowns with 0.5 for explanation generation
+            feat_list = [answered.get(i, 0.5) for i in range(10)]
+            pred_idx  = CLASSES.index(pred)
+            explanation = _build_explanation(feat_list, pred_idx)
+            return QuizNextResponse(
+                done=True, state=new_state,
+                prediction=pred, confidence=conf,
+                explanation=explanation,
+            )
+
+        # Pick next question via Information Gain
+        next_q = _quiz.select_next_question(posterior, set(answered.keys()))
+        if next_q is None:
+            pred, conf = _quiz.get_prediction(posterior)
+            feat_list = [answered.get(i, 0.5) for i in range(10)]
+            explanation = _build_explanation(feat_list, CLASSES.index(pred))
+            return QuizNextResponse(
+                done=True, state=new_state, 
+                prediction=pred, confidence=conf, 
+                explanation=explanation
+            )
+
+        return QuizNextResponse(
+            done=False,
+            state=new_state,
+            question=QuizQuestion(**_quiz.get_question(next_q)),
+        )
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, detail=str(e))
+
 @app.post("/quiz/start", response_model=QuizStartResponse)
 def quiz_start(req: QuizStartRequest):
     if not _quiz:
@@ -297,60 +355,4 @@ def quiz_start(req: QuizStartRequest):
     for idx, ans in pre.items():
         posterior = _quiz.bayes_update(posterior, idx, ans)
 
-    first_q_idx = _quiz.first_question(pre or None)
-    state = QuizState(
-        answered=pre,
-        posterior=posterior,
-        n_answered=len(pre),
-        entropy=round(_quiz.entropy(posterior), 4),
-    )
-    return QuizStartResponse(question=QuizQuestion(**_quiz.get_question(first_q_idx)), state=state)
 
-
-@app.post("/quiz/next", response_model=QuizNextResponse)
-def quiz_next(req: QuizNextRequest):
-    if not _quiz:
-        raise HTTPException(503, "Quiz engine not available")
-
-    answered   = {int(k): float(v) for k, v in req.state.answered.items()}
-    posterior  = list(req.state.posterior)
-    q_idx      = int(req.question_idx)
-    answer     = float(req.answer)
-
-    # Update state with this answer
-    answered[q_idx] = answer
-    posterior       = _quiz.bayes_update(posterior, q_idx, answer)
-    n_answered      = len(answered)
-    entropy         = _quiz.entropy(posterior)
-
-    new_state = QuizState(
-        answered=answered,
-        posterior=posterior,
-        n_answered=n_answered,
-        entropy=round(entropy, 4),
-    )
-
-    # Check stopping condition
-    if _quiz.should_stop(posterior, n_answered):
-        pred, conf = _quiz.get_prediction(posterior)
-        # Build partial feature list (fill unknowns with class prototype midpoint)
-        feat_list = [answered.get(i, 0.5) for i in range(10)]
-        pred_idx  = CLASSES.index(pred)
-        explanation = _build_explanation(feat_list, pred_idx)
-        return QuizNextResponse(
-            done=True, state=new_state,
-            prediction=pred, confidence=conf,
-            explanation=explanation,
-        )
-
-    # Pick next question
-    next_q = _quiz.select_next_question(posterior, set(answered.keys()))
-    if next_q is None:
-        pred, conf = _quiz.get_prediction(posterior)
-        return QuizNextResponse(done=True, state=new_state, prediction=pred, confidence=conf)
-
-    return QuizNextResponse(
-        done=False,
-        state=new_state,
-        question=QuizQuestion(**_quiz.get_question(next_q)),
-    )

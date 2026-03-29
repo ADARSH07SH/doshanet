@@ -292,9 +292,37 @@
         </div>
 
         <!-- Explanation / SHAP -->
-        <div class="result-card explain-card full-width-card">
+        <div class="result-card explain-card">
           <div class="card-title">Feature Attribution (SHAP)</div>
           <div id="explanation-cards" class="explain-list"></div>
+        </div>
+
+        <!-- Ayurvedic Recommendations -->
+        <div class="result-card recommendations-card" id="recom-card">
+          <div class="card-title">Ayurvedic Recommendations</div>
+          <div class="recom-grid">
+            <div class="recom-item">
+              <div class="recom-icon">🥗</div>
+              <div class="recom-content">
+                <strong>Diet:</strong>
+                <p id="recom-diet">—</p>
+              </div>
+            </div>
+            <div class="recom-item">
+              <div class="recom-icon">🌿</div>
+              <div class="recom-content">
+                <strong>Herbs:</strong>
+                <p id="recom-herbs">—</p>
+              </div>
+            </div>
+            <div class="recom-item">
+              <div class="recom-icon">🧘</div>
+              <div class="recom-content">
+                <strong>Lifestyle:</strong>
+                <p id="recom-lifestyle">—</p>
+              </div>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -303,37 +331,8 @@
   </div>
 </section>
 
-<!-- ── Algorithm Panel ──────────────────────────────────────── -->
-<section class="about-section" id="about">
-  <div class="about-inner">
-    <h2 class="about-title">Algorithm Deep-Dive</h2>
-    <div class="algo-grid">
-      <div class="algo-card">
-        <div class="algo-icon">🧠</div>
-        <h3>Cross-Modal Attention</h3>
-        <p>Query features attend over image spatial tokens (16 patches): <code>Attn(Q=query, K=V=img_tokens)</code>. Enables genuine modality interaction vs naive concatenation. Inspired by CLIP & Flamingo.</p>
-      </div>
-      <div class="algo-card">
-        <div class="algo-icon">📊</div>
-        <h3>MC-Dropout Uncertainty</h3>
-        <p>T=50 stochastic forward passes with dropout ON ≈ sampling from approximate Bayesian posterior (Gal & Ghahramani, 2016). Separates <em>epistemic</em> (model) from <em>aleatoric</em> (data) uncertainty.</p>
-      </div>
-      <div class="algo-card">
-        <div class="algo-icon">🎯</div>
-        <h3>Adaptive Quiz (NP-Hard)</h3>
-        <p>Optimal question ordering = NP-complete Optimal Decision Tree (Hyafil & Rivest, 1976). Our greedy <strong>mutual information maximization</strong> achieves (1−1/e) ≈ 63% approximation. Stops when P(dosha) &gt; 82%.</p>
-      </div>
-      <div class="algo-card">
-        <div class="algo-icon">🔥</div>
-        <h3>GradCAM Saliency</h3>
-        <p>α<sub>k</sub> = GlobalAvgPool(∂y<sup>c</sup>/∂A<sup>k</sup>). Maps gradient × activation to spatial heatmap on the face image, showing which regions drove the dosha classification (Selvaraju et al., 2017).</p>
-      </div>
-    </div>
-  </div>
-</section>
-
 <footer class="footer">
-  <p>DoshaNet v2 · Cross-Modal Bayesian AI · Built with FastAPI + PyTorch</p>
+  <p>DoshaNet v2 · Bayesian Ayurvedic Wellness · Built with FastAPI + PyTorch</p>
 </footer>
 
 <div id="toast-container"></div>

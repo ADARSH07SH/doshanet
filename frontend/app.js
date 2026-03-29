@@ -8,9 +8,30 @@ const API = (window.location.hostname === "localhost" || window.location.hostnam
   : window.location.origin;
 
 const DOSHA = {
-  Vata:  { emoji:"🌬️", color:"#8b5cf6", desc:"Air & Space — Creative, quick, light. Tends toward dryness, variability, and anxiety." },
-  Pitta: { emoji:"🔥", color:"#f97316", desc:"Fire & Water — Intense, sharp, driven. Tends toward heat, transformation, and irritability." },
-  Kapha: { emoji:"🌊", color:"#14b8a6", desc:"Earth & Water — Calm, stable, nurturing. Tends toward heaviness, moisture, and endurance." },
+  Vata: {
+    emoji: "🌬️",
+    color: "#8b5cf6",
+    desc: "Air & Space — Creative, quick, light. Tends toward dryness, variability, and anxiety.",
+    diet: "Warm, cooked foods, healthy fats (ghee), sweet/sour/salty tastes.",
+    herbs: "Ashwagandha (stress), Triphala (digestion), Ginger.",
+    lifestyle: "Regular routine, warm oil massage (Abhyanga), grounding yoga."
+  },
+  Pitta: {
+    emoji: "🔥",
+    color: "#f97316",
+    desc: "Fire & Water — Focused, intelligent, intense. Tends toward heat, acidity, and irritability.",
+    diet: "Cooling foods, fresh vegetables, sweet/bitter/astringent tastes.",
+    herbs: "Shatavari (cooling), Brahmi (mental focus), Aloe Vera.",
+    lifestyle: "Avoid midday sun, practice moderation, cooling breathwork (Sitali)."
+  },
+  Kapha: {
+    emoji: "🌱",
+    color: "#10b981",
+    desc: "Earth & Water — Steady, calm, strong. Tends toward lethargy, congestion, and attachment.",
+    diet: "Light, spicy, warm foods, avoiding heavy sweets and dairy.",
+    herbs: "Trikatu (spices for metabolism), Turmeric, Tulsi (Holy Basil).",
+    lifestyle: "Early wake times, vigorous exercise, dry skin brushing (Garshana)."
+  }
 };
 
 // ── State ────────────────────────────────────────────────────
