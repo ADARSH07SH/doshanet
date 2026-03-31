@@ -232,3 +232,54 @@ class DoshaNet(nn.Module):
 
         self.eval()
         return mean_proba, epistemic, aleatoric, attn_last
+
+    # ── GradCAM API ──────────────────────────────────────────────────────────
+    def get_gradcam(self, image, features, target_class=None):
+        """
+        Computes Grad-CAM saliency map for the given input.
+        Returns: (heatmap_np_array, predicted_class_idx)
+        """
+        self.eval()
+        
+        activations = None
+        gradients   = None
+        
+        def fwd_hook(module, input, output):
+            nonlocal activations
+            activations = output
+            
+        def bwd_hook(module, grad_in, grad_out):
+            nonlocal gradients
+            gradients = grad_out[0]
+            
+        # Hook into the last convolutional block of ImageBranch
+        h1 = self.image_branch.block4.register_forward_hook(fwd_hook)
+        h2 = self.image_branch.block4.register_full_backward_hook(bwd_hook)
+        
+        # Requires grad for backward pass
+        image.requires_grad_(True)
+        features.requires_grad_(True)
+        
+        logits = self.forward(image, features)
+        if target_class is None:
+            target_class = logits.argmax(dim=1).item()
+            
+        self.zero_grad()
+        target_score = logits[0, target_class]
+        target_score.backward()
+        
+        h1.remove()
+        h2.remove()
+        
+        # calculate GradCAM
+        weights = torch.mean(gradients, dim=[-1, -2], keepdim=True) # [B, C, 1, 1]
+        cam = torch.sum(weights * activations, dim=1).squeeze()     # [H, W]
+        cam = torch.relu(cam)
+        
+        # Normalize
+        cam = cam - cam.min()
+        cam_max = cam.max()
+        if cam_max > 0:
+            cam = cam / cam_max
+            
+        return cam.detach().cpu().numpy(), target_class

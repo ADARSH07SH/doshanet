@@ -38,10 +38,10 @@ DATA_JSON  = os.path.join(ROOT, "dataset", "data.json")
 SAVE_DIR   = os.path.join(ROOT, "model", "saved")
 IMG_ROOT   = os.path.join(ROOT, "dataset")
 
-BATCH_SIZE  = 16
-EPOCHS      = 40
+BATCH_SIZE  = 128
+EPOCHS      = 15
 LR          = 1e-3
-PATIENCE    = 8
+PATIENCE    = 4
 LABEL_SMOOTH= 0.1
 IMG_SIZE    = 64   # Smaller size for lightweight CNN
 DEVICE      = "cpu"
@@ -100,7 +100,7 @@ def load_splits():
 
 # ── Baseline RF ───────────────────────────────────────────────────────────────
 def train_rf_baseline(train, val):
-    print("\n── Random Forest Baseline ──────────────────────────────────")
+    print("\n-- Random Forest Baseline --")
     X_train = np.array([r["features"] for r in train])
     y_train = [r["label"] for r in train]
     X_val   = np.array([r["features"] for r in val])
@@ -114,13 +114,13 @@ def train_rf_baseline(train, val):
 
     out = os.path.join(SAVE_DIR, "rf_baseline.pkl")
     joblib.dump(rf, out)
-    print(f"   Saved → {out}")
+    print(f"   Saved -> {out}")
     return rf
 
 
 # ── DoshaNet Training ─────────────────────────────────────────────────────────
 def train_model(train_records, val_records):
-    print(f"\n── DoshaNet Training (device={DEVICE}) ─────────────────────")
+    print(f"\n-- DoshaNet Training (device={DEVICE}) --")
     train_ds = DoshaDataset(train_records, augment=True)
     val_ds   = DoshaDataset(val_records,   augment=False)
     train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True,  num_workers=0)
@@ -184,7 +184,7 @@ def train_model(train_records, val_records):
     model.load_state_dict(best_state)
     out = os.path.join(SAVE_DIR, "dosha_model.pt")
     torch.save(model.state_dict(), out)
-    print(f"✅ Best model saved → {out}  (val_loss={best_val_loss:.4f})")
+    print(f"[OK] Best model saved -> {out}  (val_loss={best_val_loss:.4f})")
     return model
 
 

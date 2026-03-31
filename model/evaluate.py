@@ -100,7 +100,7 @@ if __name__ == "__main__":
     acc = accuracy_score(y_true, y_pred)
     f1  = f1_score(y_true, y_pred, average="macro")
 
-    print(f"\n── Test Metrics ─────────────────────────────")
+    print(f"\n-- Test Metrics --")
     print(f"  Accuracy  : {acc*100:.1f}%")
     print(f"  F1 (macro): {f1:.3f}")
     print(f"\nClassification Report:\n")
