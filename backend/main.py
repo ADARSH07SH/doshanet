@@ -349,10 +349,28 @@ def quiz_next(req: QuizNextRequest):
 def quiz_start(req: QuizStartRequest):
     if not _quiz:
         raise HTTPException(503, "Quiz engine not available")
+    
     pre = {int(k): float(v) for k, v in (req.pre_answered or {}).items()}
-
     posterior = _quiz.initial_posterior()
+    
+    # Pre-apply any known answers (e.g. face_ratio from webcam)
     for idx, ans in pre.items():
         posterior = _quiz.bayes_update(posterior, idx, ans)
 
+    # Pick the best question
+    next_q = _quiz.select_next_question(posterior, set(pre.keys()))
+    if next_q is None:
+        raise HTTPException(400, "No questions available to start.")
 
+    entropy = _quiz.entropy(posterior)
+    state = QuizState(
+        answered=pre,
+        posterior=posterior,
+        n_answered=len(pre),
+        entropy=round(entropy, 4)
+    )
+
+    return QuizStartResponse(
+        question=QuizQuestion(**_quiz.get_question(next_q)),
+        state=state
+    )
