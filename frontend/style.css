@@ -419,9 +419,12 @@ body {
   padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
 }
 .recom-icon { font-size: 1.5rem; flex-shrink: 0; }
-.recom-content { flex: 1; }
+.recom-content { flex: 1; min-width: 0; }
 .recom-content strong { display: block; font-size: 0.85rem; color: var(--accent); margin-bottom: 4px; }
-.recom-content p { font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; }
+.recom-content p { 
+  font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; 
+  word-wrap: break-word; word-break: break-word; white-space: normal; 
+}
 
 /* ── About / Algorithm ──────────────────────────────────────── */
 .about-section { background: var(--bg2); border-top: 1px solid var(--border); padding: 80px 24px; }

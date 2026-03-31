@@ -154,7 +154,7 @@ class AdaptiveQuizEngine:
         return self.select_next_question(posterior, answered)
 
     def should_stop(self, posterior: list, n_answered: int) -> bool:
-        return max(posterior) >= STOP_THRESHOLD or n_answered >= MAX_QUESTIONS
+        return (max(posterior) >= STOP_THRESHOLD and n_answered >= 4) or n_answered >= MAX_QUESTIONS
 
     def get_prediction(self, posterior: list) -> tuple[str, dict]:
         idx   = int(np.argmax(posterior))

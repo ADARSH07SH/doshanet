@@ -477,6 +477,11 @@ async function showResults(quizData) {
   $("pred-desc").textContent  = info.desc;
   $("unc-badge").style.display = "none";
 
+  // Recommendations
+  $("recom-diet").textContent      = info.diet;
+  $("recom-herbs").textContent     = info.herbs;
+  $("recom-lifestyle").textContent = info.lifestyle;
+
   // Ternary triangle
   drawTernaryTriangle(
     conf["Vata"]/100, conf["Pitta"]/100, conf["Kapha"]/100,
@@ -693,26 +698,144 @@ function renderExplanation(items) {
 }
 
 // ── Reset ────────────────────────────────────────────────────
+// ── Reset ────────────────────────────────────────────────────
 window.resetAll = function() {
   state = {
     imageFile:null, imageBytes:null, faceMeasured:false, faceRatio:null,
     quizState:null, currentQ:null, prediction:null, confidence:null,
     quizAnswers:{}, confChart:null, mediapipe:null, camera:null, webcamActive:false,
   };
-  preview.classList.add("hidden");
-  dropCont.classList.remove("hidden");
-  imgInput.value = "";
-  $("start-quiz-btn").disabled = true;
-  $("start-btn-text").textContent = "➡ Start Adaptive Quiz";
-  $("start-spinner").classList.add("hidden");
-  $("val-ratio").textContent = "—";
-  $("val-sym").textContent = "—";
-  $("val-skin").textContent = "—";
-  $("bar-ratio").style.width = "50%";
-  $("bar-sym").style.width = "50%";
-  $("metrics-note").textContent = "Upload a face photo to auto-extract metrics.";
-  $("gradcam-img").classList.add("hidden");
-  $("gradcam-placeholder").classList.remove("hidden");
-  goStep(1);
+  // Wait, if deep linked, these elements might not exist.
+  try {
+    $("preview-img").classList.add("hidden");
+    $("drop-content").classList.remove("hidden");
+    $("image-input").value = "";
+    $("start-quiz-btn").disabled = true;
+    $("start-btn-text").textContent = "➡ Start Adaptive Quiz";
+    $("start-spinner").classList.add("hidden");
+    $("val-ratio").textContent = "—";
+    $("val-sym").textContent = "—";
+    $("val-skin").textContent = "—";
+    $("bar-ratio").style.width = "50%";
+    $("bar-sym").style.width = "50%";
+    $("metrics-note").textContent = "Upload a face photo to auto-extract metrics.";
+    $("gradcam-img").classList.add("hidden");
+    $("gradcam-placeholder").classList.remove("hidden");
+  } catch(e) {} // Ignore if deep linked without face
+  switchPanel(1);
   if (state.confChart) { state.confChart.destroy(); state.confChart = null; }
+  
+  // Strip url param
+  window.history.replaceState({}, document.title, window.location.pathname);
+};
+
+// ── Viral Growth Mechanics ───────────────────────────────────
+
+window.addEventListener('DOMContentLoaded', async () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const profileId = urlParams.get('profile');
+  if (profileId) {
+    try {
+      const res = await fetch(API + "/profile/" + profileId);
+      if (res.ok) {
+        const payload = await res.json();
+        state.prediction = payload.prediction;
+        state.confidence = payload.confidence;
+        
+        switchPanel(3);
+        
+        const info = DOSHA[payload.prediction];
+        $("pred-emoji").textContent = info.emoji;
+        $("pred-name").textContent = payload.prediction;
+        $("pred-name").className = "pred-name " + payload.prediction.toLowerCase();
+        $("pred-desc").textContent = info.desc;
+        $("recom-diet").textContent = info.diet;
+        $("recom-herbs").textContent = info.herbs;
+        $("recom-lifestyle").textContent = info.lifestyle;
+        
+        drawConfidenceChart(payload.confidence);
+        drawTernaryTriangle(payload.confidence["Vata"]/100, payload.confidence["Pitta"]/100, payload.confidence["Kapha"]/100, info.color, payload.epistemic || 0);
+        
+        if (payload.gradcamDataUrl && payload.gradcamDataUrl.startsWith('data:image')) {
+          $("gradcam-placeholder").classList.add("hidden");
+          $("gradcam-img").src = payload.gradcamDataUrl;
+          $("gradcam-img").classList.remove("hidden");
+        }
+        
+        showToast("Loaded shared Dosha profile!", "ok");
+      }
+    } catch(e) {
+      console.error(e);
+      showToast("Could not load profile.");
+    }
+  }
+});
+
+window.shareProfile = async function() {
+  const btn = $("btn-share");
+  btn.disabled = true;
+  btn.textContent = "⏳ Saving...";
+  try {
+    const gcImg = $("gradcam-img");
+    const payload = {
+      prediction: state.prediction,
+      confidence: state.confidence,
+      gradcamDataUrl: (!gcImg.classList.contains("hidden")) ? gcImg.src : null,
+      epistemic: parseFloat($("unc-epistemic-val").textContent) || 0,
+      answers: state.quizAnswers
+    };
+    
+    const res = await fetch(API + "/profile/save", {
+      method: "POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({payload})
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      const shareUrl = window.location.origin + window.location.pathname + "?profile=" + data.id;
+      await navigator.clipboard.writeText(shareUrl);
+      showToast("Link Copied: " + shareUrl, "ok");
+    } else {
+      showToast("Failed to generate link.");
+    }
+  } catch(e) {
+    console.error(e);
+    showToast("Error sharing profile.");
+  }
+  btn.disabled = false;
+  btn.textContent = "🔗 Share URL";
+};
+
+window.downloadPDF = function() {
+  const btn = $("btn-pdf");
+  if (typeof html2pdf === "undefined") {
+      showToast("PDF engine still loading, try again.");
+      return;
+  }
+  btn.disabled = true;
+  btn.textContent = "⏳ Generating...";
+  
+  const element = $("panel-results");
+  const opt = {
+    margin:       [10, 5, 10, 5],
+    filename:     'DoshaNet-Profile.pdf',
+    image:        { type: 'jpeg', quality: 0.98 },
+    html2canvas:  { scale: 2, useCORS: true, backgroundColor: "#0d1220" },
+    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+  
+  // Hide buttons for PDF
+  const actions = document.querySelector(".results-actions");
+  if(actions) actions.style.display = "none";
+
+  html2pdf().set(opt).from(element).save().then(() => {
+    btn.disabled = false;
+    btn.textContent = "📄 Download PDF";
+    if(actions) actions.style.display = "flex";
+    showToast("PDF Downloaded!", "ok");
+  }).catch((e) => {
+    btn.disabled = false;
+    btn.textContent = "📄 Download PDF";
+    if(actions) actions.style.display = "flex";
+  });
 };

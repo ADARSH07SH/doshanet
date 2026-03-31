@@ -15,7 +15,7 @@ Endpoints:
   GET  /quiz/questions       → all 10 question definitions
 """
 
-import io, json, sys, traceback, base64
+import io, json, sys, traceback, base64, sqlite3, secrets
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -31,11 +31,18 @@ sys.path.insert(0, ROOT)
 
 from model.model        import DoshaNet, CLASSES
 from backend.preprocess import preprocess_image, preprocess_features
-from backend.schemas    import (
-    PredictResponse, UncertaintyResponse, GradCAMResponse,
-    FeatureExplanation, QuizQuestion, QuizState,
-    QuizStartRequest, QuizStartResponse,
-    QuizNextRequest, QuizNextResponse,
+from backend.schemas import (
+    GradCAMResponse,
+    PredictResponse,
+    QuizNextRequest,
+    QuizNextResponse,
+    QuizQuestion,
+    QuizStartRequest,
+    QuizStartResponse,
+    QuizState,
+    UncertaintyResponse,
+    ProfileSaveRequest,
+    ProfileSaveResponse
 )
 from backend.adaptive_quiz import AdaptiveQuizEngine, QUESTIONS as QUIZ_QUESTIONS
 from explainability.explain import SHAPExplainer
@@ -374,3 +381,32 @@ def quiz_start(req: QuizStartRequest):
         question=QuizQuestion(**_quiz.get_question(next_q)),
         state=state
     )
+
+# ── Profiles ──────────────────────────────────────────────────────────────────
+DB_PATH = os.path.join(ROOT, "profiles.db")
+
+def init_db():
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, payload TEXT)")
+
+init_db()
+
+@app.post("/profile/save", response_model=ProfileSaveResponse)
+def profile_save(req: ProfileSaveRequest):
+    short_id = secrets.token_hex(3)
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("INSERT INTO profiles (id, payload) VALUES (?, ?)", 
+                         (short_id, json.dumps(req.payload)))
+        return ProfileSaveResponse(id=short_id)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+@app.get("/profile/{short_id}")
+def profile_get(short_id: str):
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.execute("SELECT payload FROM profiles WHERE id = ?", (short_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(404, "Profile not found")
+        return json.loads(row[0])
