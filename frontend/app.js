@@ -442,6 +442,12 @@ window.submitAnswer = async function() {
         answer:       answer,
       }),
     });
+    
+    if (!resp.ok) {
+        const errData = await resp.json();
+        throw new Error(errData.detail || `HTTP Error ${resp.status}`);
+    }
+
     const data = await resp.json();
     state.quizState        = data.state;
     state.quizAnswers[qIdx] = answer;

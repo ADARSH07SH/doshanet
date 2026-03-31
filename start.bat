@@ -6,6 +6,7 @@ echo.
 
 set KMP_DUPLICATE_LIB_OK=TRUE
 set OMP_NUM_THREADS=1
+set PYTHONIOENCODING=utf-8
 
 cd /d %~dp0
 
@@ -20,7 +21,7 @@ if not exist "dataset\data.json" (
 echo.
 echo [2/3] Checking trained model...
 if not exist "model\saved\dosha_model.pt" (
-    echo Training model (this may take ~30 seconds)...
+    echo Training model - this may take ~30 seconds...
     python run_train.py
 ) else (
     echo Trained model found - skipping training.

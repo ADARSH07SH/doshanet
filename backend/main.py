@@ -42,7 +42,8 @@ from backend.schemas import (
     QuizState,
     UncertaintyResponse,
     ProfileSaveRequest,
-    ProfileSaveResponse
+    ProfileSaveResponse,
+    FeatureExplanation
 )
 from backend.adaptive_quiz import AdaptiveQuizEngine, QUESTIONS as QUIZ_QUESTIONS
 from explainability.explain import SHAPExplainer
