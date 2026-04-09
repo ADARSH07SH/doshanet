@@ -114,8 +114,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000", "https://bfqvsfzglvjyscivwavt.supabase.co"], 
-    allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],   # same-origin on Render; explicit wildcard for local dev
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=False,
 )
 
 FRONTEND_DIR = os.path.join(ROOT, "frontend")

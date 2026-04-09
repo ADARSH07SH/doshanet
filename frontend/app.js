@@ -9,7 +9,9 @@ const API = (window.location.hostname === "localhost" || window.location.hostnam
 // Supabase Init
 const SUPABASE_URL = "https://bfqvsfzglvjyscivwavt.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmcXZzZnpnbHZqeXNjaXZ3YXZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxODEyNzMsImV4cCI6MjA5MDc1NzI3M30.Wt48G-7jGJxLCQsfrq3bedbBqvhwdjNczAh--pfhFl8";
-const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const supabaseClient = (window.supabase && window.supabase.createClient)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 const DOSHA = {
   Vata: {
@@ -148,14 +150,14 @@ function goStep(n) {
 }
 
 // ── Mode switching (upload / webcam) ─────────────────────────
-function switchMode(mode) {
+window.switchMode = function switchMode(mode) {
   $("upload-mode").classList.toggle("hidden", mode !== "upload");
   $("webcam-mode").classList.toggle("hidden", mode !== "webcam");
   $("tab-upload").classList.toggle("active", mode === "upload");
   $("tab-webcam").classList.toggle("active", mode === "webcam");
   if (mode === "webcam") initWebcam();
   else stopWebcam();
-}
+};
 
 // ── Upload & drop zone ───────────────────────────────────────
 const dropZone  = $("drop-zone");
@@ -762,7 +764,7 @@ window.resetAll = function() {
     $("gradcam-img").classList.add("hidden");
     $("gradcam-placeholder").classList.remove("hidden");
   } catch(e) {} // Ignore if deep linked without face
-  switchPanel(1);
+  goStep(1);
   if (state.confChart) { state.confChart.destroy(); state.confChart = null; }
   
   // Strip url param
@@ -774,15 +776,15 @@ window.resetAll = function() {
 window.addEventListener('DOMContentLoaded', async () => {
   const urlParams = new URLSearchParams(window.location.search);
   const profileId = urlParams.get('profile');
-  if (profileId && supabase) {
+  if (profileId && supabaseClient) {
     try {
-      const { data, error } = await supabase.from('doshanet_profiles').select('payload').eq('id', profileId).single();
+      const { data, error } = await supabaseClient.from('doshanet_profiles').select('payload').eq('id', profileId).single();
       if (!error && data) {
         const payload = data.payload;
         state.prediction = payload.prediction;
         state.confidence = payload.confidence;
         
-        switchPanel(3);
+        goStep(3);
         
         const info = DOSHA[payload.prediction];
         $("pred-emoji").textContent = info.emoji;
@@ -826,7 +828,7 @@ window.shareProfile = async function() {
     };
     
     const shortId = Math.random().toString(36).substring(2, 10);
-    const { error } = await supabase.from('doshanet_profiles').insert({ id: shortId, payload });
+    const { error } = await supabaseClient.from('doshanet_profiles').insert({ id: shortId, payload });
     
     if (!error) {
       const url = new URL(window.location.href);
