@@ -146,6 +146,23 @@ def _parse_features(features_str: str) -> list:
         raise HTTPException(422, "features must have exactly 10 values")
     return feats
 
+def _get_image_bytes(image_url: str = None, image_b64: str = None) -> bytes:
+    import base64
+    if image_b64 and image_b64 not in ("null", "undefined", ""):
+        if "," in image_b64:
+            image_b64 = image_b64.split(",", 1)[1]
+        return base64.b64decode(image_b64)
+    if image_url and image_url not in ("null", "undefined", ""):
+        return _fetch_supabase_image(image_url)
+    
+    # Return dummy gray image if no image provided
+    from PIL import Image
+    import io
+    img = Image.new("RGB", (256, 256), color=(128, 128, 128))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    return buf.getvalue()
+
 def _fetch_supabase_image(url: str) -> bytes:
     """Safely fetch image from Supabase avoiding SSRF and limiting size"""
     prefix = "https://bfqvsfzglvjyscivwavt.supabase.co/storage/v1/object/public/doshanet-uploads/"
@@ -202,12 +219,13 @@ def _build_explanation(feat_list: list, pred_idx: int) -> list:
 # ── Predict (single pass) ─────────────────────────────────────────────────────
 @app.post("/predict", response_model=PredictResponse)
 def predict(
-    image_url: str = Form(...),
+    image_url: str = Form(None),
+    image_b64: str = Form(None),
     features:  str = Form(...),
 ):
     try:
         feat_list   = _parse_features(features)
-        img_bytes   = _fetch_supabase_image(image_url)
+        img_bytes   = _get_image_bytes(image_url, image_b64)
         img_t       = preprocess_image(img_bytes).to(DEVICE)
         feat_t      = preprocess_features(feat_list).to(DEVICE)
 
@@ -231,12 +249,13 @@ def predict(
 # ── Predict with MC-Dropout Uncertainty ──────────────────────────────────────
 @app.post("/predict/uncertainty", response_model=UncertaintyResponse)
 def predict_uncertainty(
-    image_url: str = Form(...),
+    image_url: str = Form(None),
+    image_b64: str = Form(None),
     features:  str = Form(...),
 ):
     try:
         feat_list = _parse_features(features)
-        img_bytes = _fetch_supabase_image(image_url)
+        img_bytes = _get_image_bytes(image_url, image_b64)
         img_t     = preprocess_image(img_bytes).to(DEVICE)
         feat_t    = preprocess_features(feat_list).to(DEVICE)
 
@@ -274,7 +293,8 @@ def predict_uncertainty(
 # ── GradCAM ───────────────────────────────────────────────────────────────────
 @app.post("/gradcam", response_model=GradCAMResponse)
 def gradcam(
-    image_url:    str = Form(...),
+    image_url:    str = Form(None),
+    image_b64:    str = Form(None),
     features:     str = Form(...),
     target_class: int = Form(default=-1),  # -1 = use predicted class
 ):
@@ -282,7 +302,7 @@ def gradcam(
         raise HTTPException(503, "GradCAM not available")
     try:
         feat_list = _parse_features(features)
-        img_bytes = _fetch_supabase_image(image_url)
+        img_bytes = _get_image_bytes(image_url, image_b64)
         img_t     = preprocess_image(img_bytes).to(DEVICE)
         feat_t    = preprocess_features(feat_list).to(DEVICE)
 

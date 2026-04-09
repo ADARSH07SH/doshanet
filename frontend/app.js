@@ -180,18 +180,6 @@ function handleFile(file) {
     preview.classList.remove("hidden");
     dropCont.classList.add("hidden");
     analyzeFaceFromImage(e.target.result);
-    // Upload in background to avoid blocking
-    if (supabase) {
-        const ext = file.name.split('.').pop() || 'jpg';
-        const fileName = `face_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-        try {
-            const { error } = await supabase.storage.from('doshanet-uploads').upload(fileName, file);
-            if (!error) {
-                const { data: { publicUrl } } = supabase.storage.from('doshanet-uploads').getPublicUrl(fileName);
-                state.imageUrl = publicUrl;
-            }
-        } catch(err) { console.warn("Supabase upload error", err); }
-    }
   };
   reader.readAsDataURL(file);
 }
@@ -480,9 +468,7 @@ window.submitAnswer = async function() {
     updatePosterior(data.state.posterior, data.state.entropy);
 
     if (data.done) {
-      state.prediction = data.prediction;
-      state.confidence = data.confidence;
-      await showResults(data);
+      await fetchRealPrediction(data);
     } else {
       state.currentQ = data.question;
       displayQuestion(data.question, data.state);
@@ -526,68 +512,85 @@ async function showResults(quizData) {
   // SHAP explanation
   renderExplanation(quizData.explanation || []);
 
-  // Show loading indicators for async operations
-  if (state.imageUrl) {
-    // Add loading states
-    $("mc-note").textContent = "🔄 Computing uncertainty (MC-Dropout)...";
-    $("gradcam-placeholder").innerHTML = "<div>🔄</div><div>Generating GradCAM heatmap...</div>";
-    
-    // Run async operations
-    runUncertainty(pred);
-    runGradCAM(pred);
-  } else {
-    // No image — use quiz-based estimate
-    $("mc-note").textContent = "No face image / upload pending — MC-Dropout skipped";
-    $("gradcam-placeholder").innerHTML = "<div>📷</div><div>Upload face image for GradCAM</div>";
-  }
-}
-
-async function runUncertainty(prediction) {
-  if (!state.imageUrl) return;
-  try {
-    const feat = buildFeatureArray();
-    const fd   = new FormData();
-    fd.append("image_url", state.imageUrl);
-    fd.append("features", JSON.stringify(feat));
-
-    const resp = await fetch(`${API}/predict/uncertainty`, { method:"POST", body:fd });
-    if (!resp.ok) return;
-    const d = await resp.json();
-
-    // Update uncertainty panel
-    const ep  = Math.min(d.epistemic * 1000, 100);   // scale for display
+  // Update uncertainty panel if mlData exists
+  if (quizData.mlData) {
+    const d = quizData.mlData;
+    const ep  = Math.min(d.epistemic * 1000, 100);
     const al  = Math.min((d.aleatoric / 1.585) * 100, 100);
     $("unc-epistemic-bar").style.width = ep + "%";
     $("unc-aleatoric-bar").style.width = al + "%";
     $("unc-epistemic-val").textContent = d.epistemic.toFixed(5);
     $("unc-aleatoric-val").textContent = d.aleatoric.toFixed(3) + " nats";
-    $("mc-note").textContent = `MC-Dropout T=15 | Level: ${d.uncertainty_level}`;
+    $("mc-note").textContent = `MC-Dropout T=50 | Level: ${d.uncertainty_level}`;
 
-    // Show uncertainty badge
     const badge = $("unc-badge");
     badge.style.display = "flex";
     const lv = $("unc-level");
     lv.textContent = d.uncertainty_level;
     lv.className = "unc-level " + d.uncertainty_level;
 
-    // Update ternary with uncertainty ellipse
-    drawTernaryTriangle(
-      d.confidence["Vata"]/100,
-      d.confidence["Pitta"]/100,
-      d.confidence["Kapha"]/100,
-      DOSHA[d.prediction].color,
-      d.epistemic,
-    );
-  } catch(e) { console.warn("Uncertainty endpoint failed:", e); }
+    drawTernaryTriangle(conf["Vata"]/100, conf["Pitta"]/100, conf["Kapha"]/100, info.color, d.epistemic);
+  } else {
+    $("unc-badge").style.display = "none";
+    $("mc-note").textContent = "ML Inference failed — MC-Dropout skipped";
+    drawTernaryTriangle(conf["Vata"]/100, conf["Pitta"]/100, conf["Kapha"]/100, info.color, 0);
+  }
+
+  // Confidence chart
+  drawConfidenceChart(conf);
+
+  // Run GradCAM
+  runGradCAM(pred);
+}
+
+async function fetchRealPrediction(quizData) {
+  $("mc-note").textContent = "🔄 Running Multimodal Inference...";
+  const btn = $("quiz-next-btn");
+  btn.disabled = true;
+  btn.textContent = "Analyzing...";
+
+  try {
+    const feat = buildFeatureArray();
+    const fd   = new FormData();
+    if (state.imageBytes) {
+      fd.append("image_b64", state.imageBytes);
+    }
+    fd.append("features", JSON.stringify(feat));
+
+    const resp = await fetch(`${API}/predict/uncertainty`, { method:"POST", body:fd });
+    if (!resp.ok) throw new Error("Inference failed");
+    
+    const mlData = await resp.json();
+    
+    // Override quiz result with REAL ML result
+    quizData.prediction = mlData.prediction;
+    quizData.confidence = mlData.confidence;
+    quizData.explanation = mlData.explanation;
+    quizData.mlData = mlData; 
+    
+  } catch (err) {
+    console.warn("ML Model failed, using quiz fallback", err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Next Question →";
+    state.prediction = quizData.prediction;
+    state.confidence = quizData.confidence;
+    await showResults(quizData);
+  }
 }
 
 async function runGradCAM(prediction) {
-  if (!state.imageUrl) return;
+  if (!state.imageBytes) {
+    $("gradcam-placeholder").innerHTML = "<div>📷</div><div>Upload face image for GradCAM</div>";
+    return;
+  }
+  $("gradcam-placeholder").innerHTML = "<div>🔄</div><div>Generating GradCAM heatmap...</div>";
+
   const classIdx = ["Vata","Pitta","Kapha"].indexOf(prediction);
   try {
     const feat = buildFeatureArray();
     const fd   = new FormData();
-    fd.append("image_url", state.imageUrl);
+    fd.append("image_b64", state.imageBytes);
     fd.append("features", JSON.stringify(feat));
     fd.append("target_class", classIdx);
 
