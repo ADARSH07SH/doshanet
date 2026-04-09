@@ -2,10 +2,14 @@
    DoshaNet v2 — Frontend Application Logic
    ════════════════════════════════════════════════════════════ */
 
-// Auto-detect API base: same origin on Render, localhost when developing
 const API = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
   ? "http://localhost:8000"
   : window.location.origin;
+
+// Supabase Init
+const SUPABASE_URL = "https://bfqvsfzglvjyscivwavt.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmcXZzZnpnbHZqeXNjaXZ3YXZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxODEyNzMsImV4cCI6MjA5MDc1NzI3M30.Wt48G-7jGJxLCQsfrq3bedbBqvhwdjNczAh--pfhFl8";
+const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 const DOSHA = {
   Vata: {
@@ -50,6 +54,7 @@ let state = {
   camera:       null,
   webcamActive: false,
   capturedCanvas: null,
+  imageUrl: null,
 };
 
 // ── DOM helpers ──────────────────────────────────────────────
@@ -58,7 +63,16 @@ const $ = id => document.getElementById(id);
 function showToast(msg, type="warn") {
   const t = document.createElement("div");
   t.className = "toast";
-  t.innerHTML = `<span>${type==="ok"?"✅":"⚠️"}</span><span>${msg}</span>`;
+  
+  const icon = document.createElement("span");
+  icon.textContent = type === "ok" ? "✅" : "⚠️";
+  
+  const text = document.createElement("span");
+  text.textContent = msg;
+
+  t.appendChild(icon);
+  t.appendChild(text);
+
   $("toast-container").appendChild(t);
   setTimeout(()=>t.remove(), 5000);
 }
@@ -160,12 +174,24 @@ function handleFile(file) {
   if (!file || !file.type.startsWith("image/")) { showToast("Please select an image file."); return; }
   state.imageFile = file;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     state.imageBytes = e.target.result;
     preview.src = e.target.result;
     preview.classList.remove("hidden");
     dropCont.classList.add("hidden");
     analyzeFaceFromImage(e.target.result);
+    // Upload in background to avoid blocking
+    if (supabase) {
+        const ext = file.name.split('.').pop() || 'jpg';
+        const fileName = `face_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+        try {
+            const { error } = await supabase.storage.from('doshanet-uploads').upload(fileName, file);
+            if (!error) {
+                const { data: { publicUrl } } = supabase.storage.from('doshanet-uploads').getPublicUrl(fileName);
+                state.imageUrl = publicUrl;
+            }
+        } catch(err) { console.warn("Supabase upload error", err); }
+    }
   };
   reader.readAsDataURL(file);
 }
@@ -500,23 +526,28 @@ async function showResults(quizData) {
   // SHAP explanation
   renderExplanation(quizData.explanation || []);
 
-  // Now run MC-Dropout uncertainty (async, after showing results)
-  if (state.imageFile) {
+  // Show loading indicators for async operations
+  if (state.imageUrl) {
+    // Add loading states
+    $("mc-note").textContent = "🔄 Computing uncertainty (MC-Dropout)...";
+    $("gradcam-placeholder").innerHTML = "<div>🔄</div><div>Generating GradCAM heatmap...</div>";
+    
+    // Run async operations
     runUncertainty(pred);
     runGradCAM(pred);
   } else {
     // No image — use quiz-based estimate
-    $("mc-note").textContent = "No face image — MC-Dropout skipped";
+    $("mc-note").textContent = "No face image / upload pending — MC-Dropout skipped";
     $("gradcam-placeholder").innerHTML = "<div>📷</div><div>Upload face image for GradCAM</div>";
   }
 }
 
 async function runUncertainty(prediction) {
-  if (!state.imageFile) return;
+  if (!state.imageUrl) return;
   try {
     const feat = buildFeatureArray();
     const fd   = new FormData();
-    fd.append("image", state.imageFile);
+    fd.append("image_url", state.imageUrl);
     fd.append("features", JSON.stringify(feat));
 
     const resp = await fetch(`${API}/predict/uncertainty`, { method:"POST", body:fd });
@@ -530,7 +561,7 @@ async function runUncertainty(prediction) {
     $("unc-aleatoric-bar").style.width = al + "%";
     $("unc-epistemic-val").textContent = d.epistemic.toFixed(5);
     $("unc-aleatoric-val").textContent = d.aleatoric.toFixed(3) + " nats";
-    $("mc-note").textContent = `MC-Dropout T=50 | Level: ${d.uncertainty_level}`;
+    $("mc-note").textContent = `MC-Dropout T=15 | Level: ${d.uncertainty_level}`;
 
     // Show uncertainty badge
     const badge = $("unc-badge");
@@ -551,12 +582,12 @@ async function runUncertainty(prediction) {
 }
 
 async function runGradCAM(prediction) {
-  if (!state.imageFile) return;
+  if (!state.imageUrl) return;
   const classIdx = ["Vata","Pitta","Kapha"].indexOf(prediction);
   try {
     const feat = buildFeatureArray();
     const fd   = new FormData();
-    fd.append("image", state.imageFile);
+    fd.append("image_url", state.imageUrl);
     fd.append("features", JSON.stringify(feat));
     fd.append("target_class", classIdx);
 
@@ -568,7 +599,7 @@ async function runGradCAM(prediction) {
     $("gradcam-img").classList.remove("hidden");
     $("gradcam-placeholder").classList.add("hidden");
   } catch(e) {
-    $("gradcam-placeholder").innerHTML = "<div>⚠️</div><div>GradCAM unavailable</div>";
+    $("gradcam-placeholder").innerHTML = "<div>⚠️</div><div>GradCAM generation failed</div>";
     console.warn("GradCAM failed:", e);
   }
 }
@@ -740,11 +771,11 @@ window.resetAll = function() {
 window.addEventListener('DOMContentLoaded', async () => {
   const urlParams = new URLSearchParams(window.location.search);
   const profileId = urlParams.get('profile');
-  if (profileId) {
+  if (profileId && supabase) {
     try {
-      const res = await fetch(API + "/profile/" + profileId);
-      if (res.ok) {
-        const payload = await res.json();
+      const { data, error } = await supabase.from('doshanet_profiles').select('payload').eq('id', profileId).single();
+      if (!error && data) {
+        const payload = data.payload;
         state.prediction = payload.prediction;
         state.confidence = payload.confidence;
         
@@ -791,25 +822,28 @@ window.shareProfile = async function() {
       answers: state.quizAnswers
     };
     
-    const res = await fetch(API + "/profile/save", {
-      method: "POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({payload})
-    });
+    const shortId = Math.random().toString(36).substring(2, 10);
+    const { error } = await supabase.from('doshanet_profiles').insert({ id: shortId, payload });
     
-    if (res.ok) {
-      const data = await res.json();
-      const shareUrl = window.location.origin + window.location.pathname + "?profile=" + data.id;
-      await navigator.clipboard.writeText(shareUrl);
-      showToast("Link Copied: " + shareUrl, "ok");
+    if (!error) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("profile", shortId);
+      try {
+        await navigator.clipboard.writeText(url.toString());
+        showToast("Link copied to clipboard!", "ok");
+      } catch(er) {
+        showToast("Profile saved but could not copy to clipboard. ID: " + shortId);
+      }
     } else {
-      showToast("Failed to generate link.");
+      throw error;
     }
   } catch(e) {
     console.error(e);
-    showToast("Error sharing profile.");
+    showToast("Failed to share profile.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔗 Share URL";
   }
-  btn.disabled = false;
-  btn.textContent = "🔗 Share URL";
 };
 
 window.downloadPDF = function() {

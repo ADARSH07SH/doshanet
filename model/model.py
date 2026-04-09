@@ -34,7 +34,7 @@ IMG_DIM    = 256
 QUERY_DIM  = 128
 FUSED_DIM  = 128
 N_HEADS    = 4
-MC_T       = 50   # Monte Carlo samples at inference
+MC_T       = 15   # Monte Carlo samples at inference (reduced for speed)
 
 
 class ConvBlock(nn.Module):

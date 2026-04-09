@@ -79,7 +79,7 @@ class SHAPExplainer:
         Returns list of dicts: [{feature, human_label, impact, direction}, ...]
         """
         feat_arr = np.array([features])
-        shap_vals = self.explainer.shap_values(feat_arr, nsamples=100, silent=True)
+        shap_vals = self.explainer.shap_values(feat_arr, nsamples=50, silent=True)
         # shap_vals: list of [1 x n_features] per class
         vals = shap_vals[pred_class_idx][0]
         top_idx = np.argsort(np.abs(vals))[::-1][:n_top]

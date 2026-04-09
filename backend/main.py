@@ -15,9 +15,11 @@ Endpoints:
   GET  /quiz/questions       → all 10 question definitions
 """
 
-import io, json, sys, traceback, base64, sqlite3, secrets
+import io, json, sys, traceback, base64, secrets
 from contextlib import asynccontextmanager
 from typing import Optional
+import urllib.request
+from urllib.error import URLError
 
 import numpy as np
 import torch
@@ -41,8 +43,6 @@ from backend.schemas import (
     QuizStartResponse,
     QuizState,
     UncertaintyResponse,
-    ProfileSaveRequest,
-    ProfileSaveResponse,
     FeatureExplanation
 )
 from backend.adaptive_quiz import AdaptiveQuizEngine, QUESTIONS as QUIZ_QUESTIONS
@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI):
     print("🔄  Loading DoshaNet v2 model…")
     _model = DoshaNet()
     if os.path.exists(MODEL_PT):
-        _model.load_state_dict(torch.load(MODEL_PT, map_location=DEVICE))
+        _model.load_state_dict(torch.load(MODEL_PT, map_location=DEVICE, weights_only=True))
     _model.to(DEVICE).eval()
     print("✅  Model loaded.")
 
@@ -114,7 +114,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000", "https://bfqvsfzglvjyscivwavt.supabase.co"], 
+    allow_methods=["*"], allow_headers=["*"],
 )
 
 FRONTEND_DIR = os.path.join(ROOT, "frontend")
@@ -144,6 +145,20 @@ def _parse_features(features_str: str) -> list:
     if len(feats) != 10:
         raise HTTPException(422, "features must have exactly 10 values")
     return feats
+
+def _fetch_supabase_image(url: str) -> bytes:
+    """Safely fetch image from Supabase avoiding SSRF and limiting size"""
+    prefix = "https://bfqvsfzglvjyscivwavt.supabase.co/storage/v1/object/public/doshanet-uploads/"
+    if not url.startswith(prefix):
+        raise HTTPException(400, "Invalid image URL. Only Supabase storage URLs allowed.")
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=5) as response:
+            if int(response.headers.get("Content-Length", 0)) > 5 * 1024 * 1024:
+                raise HTTPException(400, "Image exceeds 5MB limit.")
+            return response.read(5 * 1024 * 1024)
+    except Exception as e:
+        raise HTTPException(400, f"Error fetching image from storage")
 
 
 def _build_explanation(feat_list: list, pred_idx: int) -> list:
@@ -186,13 +201,13 @@ def _build_explanation(feat_list: list, pred_idx: int) -> list:
 
 # ── Predict (single pass) ─────────────────────────────────────────────────────
 @app.post("/predict", response_model=PredictResponse)
-async def predict(
-    image:    UploadFile = File(...),
-    features: str        = Form(...),
+def predict(
+    image_url: str = Form(...),
+    features:  str = Form(...),
 ):
     try:
         feat_list   = _parse_features(features)
-        img_bytes   = await image.read()
+        img_bytes   = _fetch_supabase_image(image_url)
         img_t       = preprocess_image(img_bytes).to(DEVICE)
         feat_t      = preprocess_features(feat_list).to(DEVICE)
 
@@ -210,18 +225,18 @@ async def predict(
         raise
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, "Internal Server Error")
 
 
 # ── Predict with MC-Dropout Uncertainty ──────────────────────────────────────
 @app.post("/predict/uncertainty", response_model=UncertaintyResponse)
-async def predict_uncertainty(
-    image:    UploadFile = File(...),
-    features: str        = Form(...),
+def predict_uncertainty(
+    image_url: str = Form(...),
+    features:  str = Form(...),
 ):
     try:
         feat_list = _parse_features(features)
-        img_bytes = await image.read()
+        img_bytes = _fetch_supabase_image(image_url)
         img_t     = preprocess_image(img_bytes).to(DEVICE)
         feat_t    = preprocess_features(feat_list).to(DEVICE)
 
@@ -253,21 +268,21 @@ async def predict_uncertainty(
         raise
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, "Internal Server Error")
 
 
 # ── GradCAM ───────────────────────────────────────────────────────────────────
 @app.post("/gradcam", response_model=GradCAMResponse)
-async def gradcam(
-    image:        UploadFile = File(...),
-    features:     str        = Form(...),
-    target_class: int        = Form(default=-1),  # -1 = use predicted class
+def gradcam(
+    image_url:    str = Form(...),
+    features:     str = Form(...),
+    target_class: int = Form(default=-1),  # -1 = use predicted class
 ):
     if not _gradcam:
         raise HTTPException(503, "GradCAM not available")
     try:
         feat_list = _parse_features(features)
-        img_bytes = await image.read()
+        img_bytes = _fetch_supabase_image(image_url)
         img_t     = preprocess_image(img_bytes).to(DEVICE)
         feat_t    = preprocess_features(feat_list).to(DEVICE)
 
@@ -286,7 +301,7 @@ async def gradcam(
         raise
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, "Internal Server Error")
 
 
 # ── Adaptive Quiz ─────────────────────────────────────────────────────────────
@@ -383,31 +398,3 @@ def quiz_start(req: QuizStartRequest):
         state=state
     )
 
-# ── Profiles ──────────────────────────────────────────────────────────────────
-DB_PATH = os.path.join(ROOT, "profiles.db")
-
-def init_db():
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, payload TEXT)")
-
-init_db()
-
-@app.post("/profile/save", response_model=ProfileSaveResponse)
-def profile_save(req: ProfileSaveRequest):
-    short_id = secrets.token_hex(3)
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("INSERT INTO profiles (id, payload) VALUES (?, ?)", 
-                         (short_id, json.dumps(req.payload)))
-        return ProfileSaveResponse(id=short_id)
-    except Exception as e:
-        raise HTTPException(500, str(e))
-
-@app.get("/profile/{short_id}")
-def profile_get(short_id: str):
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.execute("SELECT payload FROM profiles WHERE id = ?", (short_id,))
-        row = cursor.fetchone()
-        if not row:
-            raise HTTPException(404, "Profile not found")
-        return json.loads(row[0])

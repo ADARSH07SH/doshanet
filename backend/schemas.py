@@ -1,11 +1,5 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any
-
-class ProfileSaveRequest(BaseModel):
-    payload: Dict[str, Any]
-
-class ProfileSaveResponse(BaseModel):
-    id: str
 class FeatureExplanation(BaseModel):
     feature:     str
     description: str
