@@ -502,19 +502,21 @@ async function showResults(quizData) {
   $("recom-herbs").textContent     = info.herbs;
   $("recom-lifestyle").textContent = info.lifestyle;
 
-  // Ternary triangle
-  drawTernaryTriangle(
-    conf["Vata"]/100, conf["Pitta"]/100, conf["Kapha"]/100,
-    info.color
-  );
+  // Normalise conf to 0–1 for ternary (quiz returns 0–100; ML returns 0–100 too)
+  const vPct   = (conf["Vata"]  || 0) / 100;
+  const piPct  = (conf["Pitta"] || 0) / 100;
+  const kaPct  = (conf["Kapha"] || 0) / 100;
 
-  // Confidence chart
+  // Ternary triangle (initial draw, no epistemic yet)
+  drawTernaryTriangle(vPct, piPct, kaPct, info.color);
+
+  // Confidence chart (draw once)
   drawConfidenceChart(conf);
 
   // SHAP explanation
   renderExplanation(quizData.explanation || []);
 
-  // Update uncertainty panel if mlData exists
+  // Update uncertainty panel if mlData exists (from MC-Dropout)
   if (quizData.mlData) {
     const d = quizData.mlData;
     const ep  = Math.min(d.epistemic * 1000, 100);
@@ -531,15 +533,12 @@ async function showResults(quizData) {
     lv.textContent = d.uncertainty_level;
     lv.className = "unc-level " + d.uncertainty_level;
 
-    drawTernaryTriangle(conf["Vata"]/100, conf["Pitta"]/100, conf["Kapha"]/100, info.color, d.epistemic);
+    // Redraw ternary with epistemic uncertainty ellipse
+    drawTernaryTriangle(vPct, piPct, kaPct, info.color, d.epistemic);
   } else {
     $("unc-badge").style.display = "none";
-    $("mc-note").textContent = "ML Inference failed — MC-Dropout skipped";
-    drawTernaryTriangle(conf["Vata"]/100, conf["Pitta"]/100, conf["Kapha"]/100, info.color, 0);
+    $("mc-note").textContent = "ML Inference unavailable — Bayesian quiz result shown";
   }
-
-  // Confidence chart
-  drawConfidenceChart(conf);
 
   // Run GradCAM
   runGradCAM(pred);
@@ -554,9 +553,8 @@ async function fetchRealPrediction(quizData) {
   try {
     const feat = buildFeatureArray();
     const fd   = new FormData();
-    if (state.imageBytes) {
-      fd.append("image_b64", state.imageBytes);
-    }
+    // Always append image_b64 (empty string if no image) to keep multipart form well-formed
+    fd.append("image_b64", state.imageBytes || "");
     fd.append("features", JSON.stringify(feat));
 
     const resp = await fetch(`${API}/predict/uncertainty`, { method:"POST", body:fd });
@@ -592,7 +590,7 @@ async function runGradCAM(prediction) {
   try {
     const feat = buildFeatureArray();
     const fd   = new FormData();
-    fd.append("image_b64", state.imageBytes);
+    fd.append("image_b64", state.imageBytes || "");
     fd.append("features", JSON.stringify(feat));
     fd.append("target_class", classIdx);
 
